@@ -419,8 +419,25 @@ Save table data in a file:
 	hive> insert overwrite directory '/home/cloudera/Desktop/Deepak' select * from books1; --> In HDFS
 
 
+Read Apache web log file:
+-------------------------
 
+CREATE TABLE apachelog (
+  host STRING,
+  identity STRING,
+  user STRING,
+  time STRING,
+  request STRING,
+  status STRING,
+  size STRING,
+  referer STRING,
+  agent STRING)
+ROW FORMAT SERDE 'org.apache.hadoop.hive.serde2.RegexSerDe'
+WITH SERDEPROPERTIES (
+  "input.regex" = "([^ ]*) ([^ ]*) ([^ ]*) (-|\\[[^\\]]*\\]) ([^ \"]*|\"[^\"]*\") (-|[0-9]*) (-|[0-9]*)(?: ([^ \"]*|\"[^\"]*\") ([^ \"]*|\"[^\"]*\"))?")
+STORED AS TEXTFILE;
 
+	hive> load data local inpath '/home/cloudera/Desktop/Deepak/ApacheLog' overwrite into table apachelog;
 
 
 
