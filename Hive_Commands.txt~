@@ -384,42 +384,8 @@ Word Count program:
 
 hive> create table if not exists word_count(name string) stored as textfile;
 hive> select word,count(1) as count from (select explode(split(name,',')) as word from word_count) w group by word;
-
-
-Update and Delete
------------------
-No limitaion for Insert
-Limitations only for Update and Delete:
-
-    BEGIN, COMMIT, and ROLLBACK are not yet supported.  All language operations are auto-commit.
-
-    Only ORC file format is supported in this first release.  
-  
-    Tables must be bucketed to make use of these features.External tables cannot be made ACID tables since the changes on external tables are beyond the control of 	the compactor (HIVE-13175).
-    
-    Reading/writing to an ACID table from a non-ACID session is not allowed. In other words, the Hive transaction manager must be set to  
-    org.apache.hadoop.hive.ql.lockmgr.DbTxnManager in order to work with ACID tables.
-    
-    LOAD DATA... statement is not supported with transactional tables.  (This was not properly enforced until HIVE-16732)
-
-Set property :
-	set hive.support.concurrency=true;
-	set hive.enforce.bucketing=true;
-	set hive.exec.dynamic.partition.mode=nonstrict;
-	set hive.txn.manager=org.apache.hadoop.hive.ql.lockmgr.DbTxnManager;
-	set hive.compactor.initiator.on=true;
-	set hive.compactor.worker.threads=2;
-	hive> create table if not exists Hive_ACID (id int , name string , age string) clustered by (id) into 2 buckets  stored as ORC  tblproperties ('transactional' = 'true');
-	hive> update Hive_ACID set age='34' where id=1;
-	hive> delete from Hive_ACID where id=2;		
-
-Save table data in a file:
---------------------------
-	hive> insert overwrite local directory '/home/cloudera/Desktop/Deepak' select * from books1; --> In local 
-	hive> insert overwrite directory '/home/cloudera/Desktop/Deepak' select * from books1; --> In HDFS
-
-
-
+		
+	
 
 
 
