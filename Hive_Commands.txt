@@ -439,7 +439,13 @@ STORED AS TEXTFILE;
 
 	hive> load data local inpath '/home/cloudera/Desktop/Deepak/ApacheLog' overwrite into table apachelog;
 
+Sample Case study:
+-------------------
+hive> create table if not exists olympic (athelete STRING,age INT,country STRING,year STRING,closing STRING,sport STRING,gold INT,silver INT,bronze INT,total INT) row format delimited fields terminated by '\t' stored as textfile;
 
+hive> load data local inpath '/home/cloudera/Desktop/Deepak/olympic_data.csv' overwrite into table olympic;
+
+	
 
 
 

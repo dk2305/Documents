@@ -1,0 +1,235 @@
+Case-insensitive - All Hive keywords are case-insensitive, including the names of Hive operators and functions.
+
+Comments can be attached both at the column level as well as at the table level. 
+
+Semantics of the dynamic partition insert statement:
+
+    If the input column is a type different than STRING, its value will be first converted to STRING to be used to construct the HDFS path.
+    If the input column value is NULL or empty string, the row will be put into a special partition, whose name is controlled by the hive parameter 		
+    hive.exec.default.partition.name. The default value is HIVE_DEFAULT_PARTITION{}. Basically this partition will contain all "bad" rows whose value are not valid 
+    partition names. The caveat of this approach is that the bad value will be lost and is replaced by HIVE_DEFAULT_PARTITION{} if you select them Hive. 
+
+Troubleshooting and best practices:
+
+    As stated above, there are too many dynamic partitions created by a particular mapper/reducer, a fatal error could be raised and the job will be killed. The    
+    error message looks something like:
+        beeline> set hive.exec.dynamic.partition.mode=nonstrict;
+        beeline> FROM page_view_stg pvs
+              INSERT OVERWRITE TABLE page_view PARTITION(dt, country)
+                     SELECT pvs.viewTime, pvs.userid, pvs.page_url, pvs.referrer_url, null, null, pvs.ip,
+                            from_unixtimestamp(pvs.viewTime, 'yyyy-MM-dd') ds, pvs.country;
+    ...
+    2010-05-07 11:10:19,816 Stage-1 map = 0%,  reduce = 0%
+    [Fatal Error] Operator FS_28 (id=41): fatal error. Killing the job.
+    Ended Job = job_201005052204_28178 with errors
+    ...
+
+    The problem of this that one mapper will take a random set of rows and it is very likely that the number of distinct (dt, country) pairs will exceed the limit of 
+    hive.exec.max.dynamic.partitions.pernode. One way around it is to group the rows by the dynamic partition columns in the mapper and distribute them to the 
+    reducers where the dynamic partitions will be created. In this case the number of distinct dynamic partitions will be significantly reduced. The above example 
+    query could be rewritten to:
+    beeline> set hive.exec.dynamic.partition.mode=nonstrict;
+    beeline> FROM page_view_stg pvs
+          INSERT OVERWRITE TABLE page_view PARTITION(ds, country)
+                 SELECT pvs.viewTime, pvs.userid, pvs.page_url, pvs.referrer_url, null, null, pvs.ip,
+                        from_unixtimestamp(pvs.viewTime, 'yyyy-MM-dd') ds, pvs.country
+                 DISTRIBUTE BY ds, country;
+
+    This query will generate a MapReduce job rather than Map-only job. The SELECT-clause will be converted to a plan to the mappers and the output will be 
+    distributed to the reducers based on the value of (ds, country) pairs. The INSERT-clause will be converted to the plan in the reducer which writes to the dynamic 
+    partitions.
+
+In general the TABLESAMPLE syntax looks like:
+	TABLESAMPLE(BUCKET x OUT OF y)
+
+	y has to be a multiple or divisor of the number of buckets in that table as specified at the table creation time. The buckets chosen are determined if 	
+	bucket_number module y is equal to x.
+
+Example of running a script non-interactively from a Hadoop supported filesystem (starting in Hive 0.14)
+
+	$HIVE_HOME/bin/hive -f hdfs://<namenode>:<port>/hive-script.sql
+	$HIVE_HOME/bin/hive -f s3://mys3bucket/s3-script.sql 
+
+beeline> [cloudera@quickstart ~]$ beeline -u jdbc:hive2://localhost:10000 cloudera cloudera 
+
+Starting in Hive 0.14, columns can be added to an Avro backed Hive table using the Alter Table statement.
+
+ORC file format has many advantages such as:
+    a single file as the output of each task, which reduces the NameNode's load
+    concurrent reads of the same file using separate RecordReaders
+    
+Table names and column names are case insensitive but SerDe and property names are case sensitive.
+
+Store JSON DATA : CREATE TABLE my_table(a string, b bigint, ...) ROW FORMAT SERDE 'org.apache.hive.hcatalog.data.JsonSerDe' STORED AS TEXTFILE;
+
+Steps : (Imp Link : https://github.com/rcongiu/Hive-JSON-Serde)
+
+	hive>ADD JAR /usr/lib/hive-hcatalog/share/hcatalog/hive-hcatalog-core-1.1.0-cdh5.13.0.jar
+	hive>CREATE TABLE test (
+        	one boolean,
+        	three array<string>,
+        	two double,
+        	four string )
+      	ROW FORMAT SERDE 'org.apache.hive.hcatalog.data.JsonSerDe'
+      	STORED AS TEXTFILE;
+	hive> load data local inpath '/home/cloudera/Desktop/Deepak/Json_Data.json' overwrite into table test;
+
+If, when creating a partitioned table, you get this error: "FAILED: Error in semantic analysis: Column repeated in partitioning columns," it means you are trying to include the partitioned column in the data of the table itself. 
+
+Create Table As Select (CTAS) has these restrictions:
+
+    The target table cannot be an external table.
+    The target table cannot be a list bucketing table.
+
+Create Table Like
+
+	The LIKE form of CREATE TABLE allows you to copy an existing table definition exactly (without copying its data). In contrast to CTAS, the statement below 		creates a new empty_key_value_store table whose definition exactly matches the existing key_value_store in all particulars other than table name.
+
+Temporary Tables
+
+Version information
+
+	A table that has been created as a temporary table will only be visible to the current session. Data will be stored in the user's scratch directory, and 	 deleted at the end of the session.If a temporary table is created with a database/table name of a permanent table which already exists in the database, then 		within that session any references to that table will resolve to the temporary table, rather than to the permanent table. The user will not be able to access 		the original table within that session without either dropping the temporary table, or renaming it to a non-conflicting name.
+
+	Temporary tables have the following limitations:
+
+    		Partition columns are not supported.
+    		No support for creation of indexes.
+
+The SerDe properties are passed to the table's SerDe when it is being initialized by Hive to serialize and deserialize data.
+
+Archiving is a feature to moves a partition's files into a Hadoop Archive (HAR). Note that only the file count will be reduced; HAR does not provide any compression.
+	hive> set hive.archive.enabled=true;
+	hive> set hive.archive.har.parentdir.settable=true;
+	hive> set har.partfile.size=1099511627776;
+	ALTER TABLE table_name ARCHIVE PARTITION partition_spec;
+	ALTER TABLE table_name UNARCHIVE PARTITION partition_spec;
+	
+	Under the Hood:
+	Internally, when a partition is archived, a HAR is created using the files from the partition's original location (such as /warehouse/table/ds=1). The parent 		directory of the partition is specified to be the same as the original location and the resulting archive is named 'data.har'. The archive is moved under the 		original directory (such as /warehouse/table/ds=1/data.har), and the partition's location is changed to point to the archive.
+
+Immutable Table : A table can be made immutable by creating it with TBLPROPERTIES ("immutable"="true"). The default is "immutable"="false".
+	INSERT INTO behavior into an immutable table is disallowed if any data is already present, although INSERT INTO still works if the immutable table is empty. 		The behavior of INSERT OVERWRITE is not affected by the "immutable" table property.
+	An immutable table is protected against accidental updates due to a script loading data into it being run multiple times by mistake. The first insert into an 		immutable table succeeds and successive inserts fail, resulting in only one set of data in the table, instead of silently succeeding with multiple copies of 		the data in the table. 
+
+In strict mode, the user must specify at least one static partition in case the user accidentally overwrites all partitions, in nonstrict mode all partitions are allowed to be dynamic
+
+Import and Export :
+	Simple export and import:
+		export table department to 'hdfs_exports_location/department';
+		import from 'hdfs_exports_location/department';
+
+	Rename table on import:
+		export table department to 'hdfs_exports_location/department';
+		import table imported_dept from 'hdfs_exports_location/department';
+
+Joins:    
+	If all but one of the tables being joined are small, the join can be performed as a map only job. The query does not need a reducer. For every mapper of A, B 		is read completely. The restriction is that a FULL/RIGHT OUTER JOIN b cannot be performed.
+    		SELECT /*+ MAPJOIN(b) */ a.key, a.value FROM a JOIN b ON a.key = b.key
+	
+	If the tables being joined are bucketized on the join columns, and the number of buckets in one table is a multiple of the number of buckets in the other 		table, the buckets can be joined with each other. If table A has 4 buckets and table B has 4 buckets, the following join can be done on the mapper only. 		Instead of fetching B completely for each mapper of A, only the required buckets are fetched.
+		SELECT /*+ MAPJOIN(b) */ a.key, a.value FROM a JOIN b ON a.key = b.key
+
+EXPLAIN : Hive provides an EXPLAIN command that shows the execution plan for a query.	
+
+SERDE:
+	A SerDe allows Hive to read in data from a table, and write it back out to HDFS in any custom format. Anyone can write their own SerDe for their own data 		formats.
+	The Hive SerDe library is in org.apache.hadoop.hive.serde2.
+	
+	Hive currently uses these FileFormat classes to read and write HDFS files:
+	    	TextInputFormat/HiveIgnoreKeyTextOutputFormat: These 2 classes read/write data in plain text file format.
+    		SequenceFileInputFormat/SequenceFileOutputFormat: These 2 classes read/write data in Hadoop SequenceFile format.
+
+	Hive currently uses these SerDe classes to serialize and deserialize data:
+		MetadataTypedColumnsetSerDe: This SerDe is used to read/write delimited records like CSV, tab-separated control-A separated records (sorry, quote is 			not supported yet).
+		LazySimpleSerDe: This SerDe can be used to read the same data format as MetadataTypedColumnsetSerDe and TCTLSeparatedProtocol, however, it creates 			Objects in a lazy way which provides better performance. 
+    			ALTER TABLE person SET SERDEPROPERTIES ('serialization.encoding'='GBK');
+    	    	ThriftSerDe: This SerDe is used to read/write Thrift serialized objects.
+    		DynamicSerDe: This SerDe also read/write Thrift serialized objects, but it understands Thrift DDL so the schema of the object can be provided at 			runtime.
+
+	Built-in SerDes
+    		Avro (Hive 0.9.1 and later)
+    		ORC (Hive 0.11 and later)
+    		RegEx
+    		Parquet (Hive 0.13 and later)
+    		CSV (Hive 0.14 and later)
+    		JsonSerDe (Hive 0.12 and later in hcatalog-core)
+
+Hive Transactions(Update,Insert and Delete):
+	Hive Streaming Requirements
+		A few things are required to use streaming.
+			The following settings are required in hive-site.xml to enable ACID support for streaming:
+		        	hive.txn.manager = org.apache.hadoop.hive.ql.lockmgr.DbTxnManager
+		        	hive.compactor.initiator.on = true (See more important details here)
+		        	hive.compactor.worker.threads > 0 
+		    	“stored as orc” must be specified during table creation. Only ORC storage format is supported currently.
+    		    	tblproperties("transactional"="true") must be set on the table during creation.
+    		    	The Hive table must be bucketed, but not sorted. 
+    			User of the client streaming process must have the necessary permissions to write to the table or partition and create partitions in the 				table.
+    			(Temporary requirements) When issuing queries on streaming tables, the client needs to set
+			        hive.input.format  to  org.apache.hadoop.hive.ql.io.HiveInputFormat
+	Basic Design
+		Data for the table or partition is stored in a set of base files.  New records, updates, and deletes are stored in delta files.  A new set of delta 			files is created for each transaction (or in the case of streaming agents such as Flume or Storm, each batch of transactions) that alters a table or 			partition.  At read time the reader merges the base and delta files, applying any updates and deletes as it reads.    
+	
+	Delta File Compaction
+		As operations modify the table more and more delta files are created and need to be compacted to maintain adequate performance.  There are two types 			of compactions, minor and major.
+	
+		    Minor compaction takes a set of existing delta files and rewrites them to a single delta file per bucket.
+		    Major compaction takes one or more delta files and the base file for the bucket and rewrites them into a new base file per bucket.  Major 			    compaction is more expensive but is more effective.
+
+Hive Replication:
+	Hive replication enables you to copy (replicate) your Hive metastore and data from one cluster to another and synchronize the Hive metastore and data set on 		the destination cluster with the source, based on a specified replication schedule.
+	High latency among clusters can cause replication jobs to run more slowly, but does not cause them to fail. For best performance, latency between the source 		cluster NameNode and the destination cluster NameNode should be less than 80 milliseconds. 
+
+	Hive Tables and DDL Commands
+	The following applies when using the drop table and truncate table DDL commands:
+
+    		If you configure replication of a Hive table and then later drop that table, the table remains on the destination cluster. The table is not dropped 			when subsequent replications occur.
+    		If you drop a table on the destination cluster, and the table is still included in the replication job, the table is re-created on the destination 			during the replication.
+    		If you drop a table partition or index on the source cluster, the replication job also drops them on the destination cluster.
+    		If you truncate a table, and the Delete Policy for the replication job is set to Delete to Trash or Delete Permanently, the corresponding data files 			are deleted on the destination during a replication.
+
+Hive Performance Tuning:
+	1. Enable Compression in Hive
+		By enabling compression at various phases (i.e. on final output, intermediate data), we achieve the performance improvement in Hive Queries. For 			further details on how to enable compression Hive refer the post Compression in Hive.
+
+	2. Optimize Joins
+		We can improve the performance of joins by enabling Auto Convert Map Joins and enabling optimization of skew joins.
+		Auto Map Joins
+			Auto Map-Join is a very useful feature when joining a big table with a small table. if we enable this feature, the small table will be saved 				in the local cache on each node, and then joined with the big table in the Map phase. Enabling Auto Map Join provides two advantages. First, 				loading a small table into cache will save read time on each data node. Second, it avoids skew joins in the Hive query, since the join 				operation has been already done in the Map phase for each block of data.
+		Use Bucketed Map Joins
+			If tables are bucketed by a particular column and these tables are being used in joins then we can enable bucketed map join to improve the 				performance.
+	3. Avoid Global Sorting in Hive
+		Global Sorting in Hive can be achieved in Hive with ORDER BY clause but this comes with a drawback. ORDER BY produces a result by setting the 			number of reducers to one, making it very inefficient for large datasets.
+		When a globally sorted result is not required, then we can use SORT BY clause. SORT BY produces a sorted file per reducer. 
+		If we need to control which reducer a particular row goes to, we can use DISTRIBUTE BY clause.
+	4. Enable Parallel Execution
+		Hive converts a query into one or more stages. Stages could be a MapReduce stage, sampling stage, a merge stage, a limit stage. By default, Hive 			executes these stages one at a time. A particular job may consist of some stages that are not dependent on each other and could be executed in 			parallel.
+			hive> set hive.exec.parallel=true;
+	5. Enable Tez Execution Engine
+		hive> set hive.execution.engine=tez;
+
+	6. Enable Vectorization
+		By vectorized query execution, we can improve performance of operations like scans, aggregations, filters and joins, by performing them in batches of 			1024 rows at once instead of single row each time.
+			hive> set hive.vectorized.execution.enabled = true;
+			hive> set hive.vectorized.execution.reduce.enabled = true;
+			hive> set hive.vectorized.execution.reduce.groupby.enabled = true;
+	
+	7. Use ORC File Format
+		hive> CREATE TABLE EMP_ORC (id int, name string, age int, address string)
+    		    >  STORED AS ORC tblproperties (“orc.compress" = “SNAPPY”);
+		hive> INSERT OVERWRITE TABLE EMP_ORC SELECT * FROM EMP;
+
+Enable Compression in Hive:
+	Find Available Compression Codecs in Hive : set io.compression.codecs;
+	Enable Compression on Intermediate Data :
+		hive> set hive.exec.compress.intermediate=true;
+		hive> set hive.intermediate.compression.codec=org.apache.hadoop.io.compress.SnappyCodec;
+		hive> set hive.intermediate.compression.type=BLOCK;
+	Enable Compression on Final Output :
+		hive> set hive.exec.compress.output=true;
+		hive> set mapreduce.output.fileoutputformat.compress=true;
+		hive> set mapreduce.output.fileoutputformat.compress.codec=org.apache.hadoop.io.compress.GzipCodec;  
+		hive> set mapreduce.output.fileoutputformat.compress.type=BLOCK;
+		
+	
