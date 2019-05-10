@@ -261,15 +261,5 @@ Use Case - CSV Data:
 	
 Use Case - JSON Data :
 	ADD JAR /usr/lib/hive-hcatalog/share/hcatalog/hive-hcatalog-core-1.1.0-cdh5.13.0.jar
-	
 	CREATE TABLE IF NOT EXISTS USA_GOV (a string, c string, nk int, tz string, gr string, g string, h string,l string, hh string, r string, u string, t int, hc 		int, cy string, al string) ROW FORMAT SERDE 'org.apache.hive.hcatalog.data.JsonSerDe';
-	
 	load data local inpath '/home/cloudera/Desktop/Deepak/UsaData.json' overwrite into table USA_GOV;
-	
-	create external table if not exists USA_GOV_PART (a string, nk int,g string, h string,l string,hh string, r string ,u string, t bigint,gr string, cy string, 		tz string,hc bigint,al string) partitioned by (c string) row format delimited fields terminated by '\t';
-
-	set hive.exec.dynamic.partition=true;
-	set hive.exec.dynamic.partition.mode=nonstrict;
-
-	insert overwrite table USA_GOV_PART partition(c) select a,nk,g,h,l,hh,r,u,t,gr,cy,tz,hc,al,c from USA_GOV;
-
