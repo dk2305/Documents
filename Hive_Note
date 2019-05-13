@@ -273,3 +273,19 @@ Use Case - JSON Data :
 
 	insert overwrite table USA_GOV_PART partition(c) select a,nk,g,h,l,hh,r,u,t,gr,cy,tz,hc,al,c from USA_GOV;
 
+Partitions:
+	Limitaions:
+		Having too many partitions in table creates large number of files and directories in HDFS, which is an overhead to NameNode since it must keep all 			metadata for the file system in memory only.
+		Partitions may optimize some queries based on Where clauses, but may be less responsive for other important queries on grouping clauses.
+
+Bucketing:
+	Advantages -
+    		Bucketed tables offer efficient sampling than by non-bucketed tables. With sampling, we can try out queries on a fraction of data for testing and 			debugging purpose when the original data sets are very huge.
+    		As the data files are equal sized parts, map-side joins will be faster on bucketed tables than non-bucketed tables. In Map-side join, a mapper 			processing a bucket of the left table knows that the matching rows in the right table will be in its corresponding bucket, so it only retrieves that 			bucket (which is a small fraction of all the data stored in the right table).
+    		Similar to partitioning, bucketed tables provide faster query responses than non-bucketed tables.
+    		Bucketing concept also provides the flexibility to keep the records in each bucket to be sorted by one or more columns. This makes map-side joins 			even more efficient, since the join of each bucket becomes an efficient merge-sort.
+
+	Limitations
+    		Specifying bucketing doesn’t ensure that the table is properly populated. Data Loading into buckets needs to be handled by our-self.
+
+
